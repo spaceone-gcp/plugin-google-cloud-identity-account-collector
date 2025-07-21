@@ -1,6 +1,8 @@
 import logging
 import itertools
 
+from google.cloud import resourcemanager_v3
+from google.oauth2.service_account import Credentials
 from plugin.connector.base_connector import GoogleCloudConnector
 
 __all__ = ["ResourceManagerV3Connector"]
@@ -9,29 +11,31 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ResourceManagerV3Connector(GoogleCloudConnector):
-    google_client_service = "cloudresourcemanager"
-    version = "v3"
-
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
         self.secret_data = kwargs.get("secret_data", {})
+        self.credentials = Credentials.from_service_account_info(self.secret_data)
+        self.projects_client = resourcemanager_v3.ProjectsAsyncClient(credentials=self.credentials)
+        self.folders_client = resourcemanager_v3.FoldersAsyncClient(credentials=self.credentials)
+        self.organizations_client = resourcemanager_v3.OrganizationsAsyncClient(credentials=self.credentials)
 
-    def list_projects(self, parent):
-        result = self.client.projects().list(parent=parent).execute()
-        return result.get("projects", [])
+    async def list_projects(self, parent: str) -> list:
+        request = resourcemanager_v3.ListProjectsRequest(parent=parent)
+        pages = await self.projects_client.list_projects(request=request)
+        return [project async for project in pages]
 
-    def get_organization(self, organization_id):
-        return self.client.organizations().get(name=organization_id).execute()
+    async def get_organization(self, organization_id: str):
+        request = resourcemanager_v3.GetOrganizationRequest(name=organization_id)
+        return await self.organizations_client.get_organization(request=request)
 
-    def list_folders(self, parent):
-        results = self.client.folders().list(parent=parent).execute()
-        return results.get("folders", [])
+    async def list_folders(self, parent: str) -> list:
+        request = resourcemanager_v3.ListFoldersRequest(parent=parent)
+        pages = await self.folders_client.list_folders(request=request)
+        return [folder async for folder in pages]
 
-    def list_role_bindings(self, resource):
-        result = self.client.projects().getIamPolicy(resource=resource).execute()
-        bindings = result.get("bindings", [])
-        return list(itertools.chain(*[binding["members"] for binding in bindings]))
+    async def list_role_bindings(self, resource: str) -> list:
+        policy = await self.projects_client.get_iam_policy(resource=resource)
+        return list(itertools.chain(*[binding.members for binding in policy.bindings]))
 
-    def search_folders(self):
-        results = self.client.folders().search().execute()
-        return results.get("folders", [])
+    async def search_folders(self) -> list:
+        pages = await self.folders_client.search_folders()
+        return [folder async for folder in pages]

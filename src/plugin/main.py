@@ -98,4 +98,4 @@ def account_collector_sync(params: dict) -> dict:
             ]
         }
     """
-    return {"results": AccountCollectorManager(**params).sync()}
+    return AccountCollectorManager(**params).sync()
